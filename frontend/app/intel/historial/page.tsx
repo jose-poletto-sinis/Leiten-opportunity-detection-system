@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ResultsTable } from "../../../components/ResultsTable";
-import { ApiError, deleteRecordById, getRecordDetail, getRecords } from "../../../lib/api";
+import { ApiError, getRecordDetail, getRecords } from "../../../lib/api";
 import type { RecordDetail, RecordSummary, RecordsResponse } from "../../../lib/types";
 
 const PAGE_SIZE = 50;
@@ -15,17 +15,9 @@ export default function HistorialPage() {
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [filterMine, setFilterMine] = useState(false);
 
-  // Modal de detalle
   const [detailRecord, setDetailRecord] = useState<RecordDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-
-  // Confirmación de eliminación
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-
-  const userId = getUserHint();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -34,7 +26,6 @@ export default function HistorialPage() {
       const result = await getRecords({
         limit: PAGE_SIZE,
         offset,
-        user_id: filterMine && userId ? userId : undefined,
         q: search || undefined,
       });
       setData(result);
@@ -43,7 +34,7 @@ export default function HistorialPage() {
     } finally {
       setLoading(false);
     }
-  }, [offset, search, filterMine, userId]);
+  }, [offset, search]);
 
   useEffect(() => {
     fetchData();
@@ -55,11 +46,6 @@ export default function HistorialPage() {
     setSearch(searchInput);
   }
 
-  function handleFilterToggle(mine: boolean) {
-    setFilterMine(mine);
-    setOffset(0);
-  }
-
   async function handleOpenDetail(savedId: string) {
     setDetailLoading(true);
     try {
@@ -69,19 +55,6 @@ export default function HistorialPage() {
       setErrorMsg(formatErr(err));
     } finally {
       setDetailLoading(false);
-    }
-  }
-
-  async function handleDelete(savedId: string) {
-    setDeletingId(savedId);
-    try {
-      await deleteRecordById(savedId, userId);
-      setDeleteConfirm(null);
-      await fetchData();
-    } catch (err) {
-      setErrorMsg(formatErr(err));
-    } finally {
-      setDeletingId(null);
     }
   }
 
@@ -117,53 +90,32 @@ export default function HistorialPage() {
 
       {/* Filtros */}
       <div className="card" style={{ marginBottom: 8 }}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
-          <form onSubmit={handleSearch} style={{ display: "flex", gap: 8, flex: 1, minWidth: 200 }}>
-            <input
-              className="input"
-              type="text"
-              placeholder="Buscar por URL o prompt..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button type="submit" className="btn">
-              Buscar
-            </button>
-            {search && (
-              <button
-                type="button"
-                className="btn btn--ghost"
-                onClick={() => {
-                  setSearchInput("");
-                  setSearch("");
-                  setOffset(0);
-                }}
-              >
-                Limpiar
-              </button>
-            )}
-          </form>
-
-          <div style={{ display: "flex", gap: 0, borderRadius: 6, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+        <form onSubmit={handleSearch} style={{ display: "flex", gap: 8 }}>
+          <input
+            className="input"
+            type="text"
+            placeholder="Buscar por URL o prompt..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button type="submit" className="btn">
+            Buscar
+          </button>
+          {search && (
             <button
               type="button"
-              className={`btn${!filterMine ? "" : " btn--ghost"}`}
-              style={{ borderRadius: 0, border: "none" }}
-              onClick={() => handleFilterToggle(false)}
+              className="btn btn--ghost"
+              onClick={() => {
+                setSearchInput("");
+                setSearch("");
+                setOffset(0);
+              }}
             >
-              Todos
+              Limpiar
             </button>
-            <button
-              type="button"
-              className={`btn${filterMine ? "" : " btn--ghost"}`}
-              style={{ borderRadius: 0, border: "none" }}
-              onClick={() => handleFilterToggle(true)}
-            >
-              Mis guardados
-            </button>
-          </div>
-        </div>
+          )}
+        </form>
       </div>
 
       {/* Tabla */}
@@ -188,7 +140,7 @@ export default function HistorialPage() {
                   <th scope="col">Prompt</th>
                   <th scope="col" style={{ textAlign: "right" }}>Filas</th>
                   <th scope="col">Usuario</th>
-                  <th scope="col" style={{ width: 120 }}></th>
+                  <th scope="col" style={{ width: 60 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -197,8 +149,6 @@ export default function HistorialPage() {
                     key={item.saved_id}
                     item={item}
                     onOpenDetail={handleOpenDetail}
-                    onDelete={(id) => setDeleteConfirm(id)}
-                    deletingId={deletingId}
                   />
                 ))}
               </tbody>
@@ -257,32 +207,6 @@ export default function HistorialPage() {
           ) : null}
         </Modal>
       )}
-
-      {/* Confirmación de eliminación */}
-      {deleteConfirm && (
-        <Modal onClose={() => setDeleteConfirm(null)}>
-          <p style={{ marginBottom: 16 }}>
-            ¿Eliminar este registro? Esta acción no se puede deshacer.
-          </p>
-          <div className="button-row">
-            <button
-              className="btn"
-              style={{ background: "#dc2626" }}
-              onClick={() => handleDelete(deleteConfirm)}
-              disabled={deletingId !== null}
-            >
-              {deletingId ? "Eliminando..." : "Eliminar"}
-            </button>
-            <button
-              className="btn btn--ghost"
-              onClick={() => setDeleteConfirm(null)}
-              disabled={deletingId !== null}
-            >
-              Cancelar
-            </button>
-          </div>
-        </Modal>
-      )}
     </main>
   );
 }
@@ -310,13 +234,9 @@ function StatusBadge({ status }: { status: string }) {
 function HistorialRow({
   item,
   onOpenDetail,
-  onDelete,
-  deletingId,
 }: {
   item: RecordSummary;
   onOpenDetail: (id: string) => void;
-  onDelete: (id: string) => void;
-  deletingId: string | null;
 }) {
   const date = new Date(item.created_at).toLocaleString("es-AR", {
     day: "2-digit",
@@ -343,25 +263,14 @@ function HistorialRow({
       <td style={{ textAlign: "right" }}>{item.row_count}</td>
       <td style={{ fontSize: 12, color: "#888" }}>{item.user_id ?? "—"}</td>
       <td>
-        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            style={{ padding: "2px 8px", fontSize: 12 }}
-            onClick={() => onOpenDetail(item.saved_id)}
-          >
-            Ver
-          </button>
-          <button
-            type="button"
-            className="btn btn--ghost"
-            style={{ padding: "2px 8px", fontSize: 12, color: "#dc2626" }}
-            onClick={() => onDelete(item.saved_id)}
-            disabled={deletingId === item.saved_id}
-          >
-            {deletingId === item.saved_id ? "…" : "Eliminar"}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          style={{ padding: "2px 8px", fontSize: 12 }}
+          onClick={() => onOpenDetail(item.saved_id)}
+        >
+          Ver
+        </button>
       </td>
     </tr>
   );
@@ -424,9 +333,4 @@ function formatErr(err: unknown): string {
   if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
   return "Error desconocido.";
-}
-
-function getUserHint(): string | undefined {
-  if (typeof window === "undefined") return undefined;
-  return window.localStorage.getItem("intel:user_id") ?? undefined;
 }

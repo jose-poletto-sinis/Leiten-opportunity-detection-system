@@ -27,6 +27,10 @@ class Settings:
 
     scraper_user_agent: str
 
+    # Base de datos: si está vacío usa SQLite local (solo dev)
+    # En producción: postgresql://user:pass@host:5432/dbname
+    database_url: str
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -45,4 +49,5 @@ def get_settings() -> Settings:
             "SCRAPER_USER_AGENT",
             "LeitenIntelBot/1.0 (+https://leiten.com/contacto)",
         ),
+        database_url=os.getenv("DATABASE_URL", ""),
     )
