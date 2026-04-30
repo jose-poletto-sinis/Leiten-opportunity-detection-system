@@ -152,6 +152,7 @@ class RecordSummary(BaseModel):
     prompt: str
     row_count: int
     user_id: str | None
+    status: str = "pendiente"
     created_at: str
 
 
@@ -165,6 +166,7 @@ class RecordDetail(BaseModel):
     columns: list[str]
     rows: list[dict[str, Any]]
     user_id: str | None
+    status: str = "pendiente"
     created_at: str
 
 

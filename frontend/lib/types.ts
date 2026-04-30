@@ -88,6 +88,7 @@ export interface RecordSummary {
   prompt: string;
   row_count: number;
   user_id: string | null;
+  status: string;
   created_at: string;
 }
 
@@ -99,6 +100,7 @@ export interface RecordDetail {
   columns: string[];
   rows: Record<string, unknown>[];
   user_id: string | null;
+  status: string;
   created_at: string;
 }
 

@@ -37,6 +37,7 @@ def _ensure_db() -> None:
                 columns_json TEXT NOT NULL,
                 rows_json TEXT NOT NULL,
                 user_id TEXT,
+                status TEXT NOT NULL DEFAULT 'pendiente',
                 created_at TEXT NOT NULL
             );
 
@@ -57,6 +58,12 @@ def _ensure_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_records_created ON scrape_records(created_at);
             """
         )
+    # Migración para DBs existentes sin la columna status
+    with _connect() as conn:
+        try:
+            conn.execute("ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'")
+        except sqlite3.OperationalError:
+            pass
 
 
 @contextmanager
@@ -111,8 +118,8 @@ def save_record(
     with _connect() as conn:
         conn.execute(
             """INSERT INTO scrape_records
-               (saved_id, request_id, url, prompt, columns_json, rows_json, user_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (saved_id, request_id, url, prompt, columns_json, rows_json, user_id, status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 str(saved_id),
                 str(request_id),
@@ -121,6 +128,7 @@ def save_record(
                 json.dumps(columns, ensure_ascii=False),
                 json.dumps(rows, ensure_ascii=False),
                 user_id,
+                "pendiente",
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
@@ -164,7 +172,7 @@ def list_records(
         total = total_row["cnt"] if total_row else 0
 
         rows = conn.execute(
-            f"""SELECT saved_id, request_id, url, prompt, rows_json, user_id, created_at
+            f"""SELECT saved_id, request_id, url, prompt, rows_json, user_id, status, created_at
                 FROM scrape_records {where}
                 ORDER BY created_at DESC
                 LIMIT ? OFFSET ?""",
@@ -185,6 +193,7 @@ def list_records(
                 "prompt": r["prompt"],
                 "row_count": row_count,
                 "user_id": r["user_id"],
+                "status": r["status"],
                 "created_at": r["created_at"],
             }
         )
@@ -197,7 +206,7 @@ def get_record(saved_id: str) -> dict[str, Any] | None:
     _ensure_db()
     with _connect() as conn:
         row = conn.execute(
-            """SELECT saved_id, request_id, url, prompt, columns_json, rows_json, user_id, created_at
+            """SELECT saved_id, request_id, url, prompt, columns_json, rows_json, user_id, status, created_at
                FROM scrape_records WHERE saved_id = ?""",
             (saved_id,),
         ).fetchone()
@@ -213,6 +222,7 @@ def get_record(saved_id: str) -> dict[str, Any] | None:
         "columns": json.loads(row["columns_json"]),
         "rows": json.loads(row["rows_json"]),
         "user_id": row["user_id"],
+        "status": row["status"],
         "created_at": row["created_at"],
     }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { validateUrls, type UrlLineError } from "../lib/validators";
+import { isValidUrl } from "../lib/validators";
 
 interface ScrapeFormProps {
   onSubmit: (urls: string[], prompt: string) => void;
@@ -10,24 +10,50 @@ interface ScrapeFormProps {
 }
 
 export function ScrapeForm({ onSubmit, loading, onCancel }: ScrapeFormProps) {
-  const [urlsRaw, setUrlsRaw] = useState("");
+  const [urlList, setUrlList] = useState<string[]>([]);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlInputError, setUrlInputError] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
-  const [urlErrors, setUrlErrors] = useState<UrlLineError[]>([]);
-  const [generalUrlError, setGeneralUrlError] = useState<string | null>(null);
   const [promptError, setPromptError] = useState<string | null>(null);
 
-  // Cuenta de URLs no vacías en el textarea
-  const urlCount = urlsRaw
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0).length;
+  function handleAddUrl() {
+    const trimmed = urlInput.trim();
+    if (!trimmed) {
+      setUrlInputError("Ingresá una URL.");
+      return;
+    }
+    if (!isValidUrl(trimmed)) {
+      setUrlInputError(`URL inválida: ${trimmed}`);
+      return;
+    }
+    if (urlList.includes(trimmed)) {
+      setUrlInputError("Esa URL ya está en la lista.");
+      return;
+    }
+    if (urlList.length >= 50) {
+      setUrlInputError("Máximo 50 URLs.");
+      return;
+    }
+    setUrlList((prev) => [...prev, trimmed]);
+    setUrlInput("");
+    setUrlInputError(null);
+    setListError(null);
+  }
+
+  function handleRemoveUrl(url: string) {
+    setUrlList((prev) => prev.filter((u) => u !== url));
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    const { valid, lineErrors, generalError } = validateUrls(urlsRaw);
-    setUrlErrors(lineErrors);
-    setGeneralUrlError(generalError ?? null);
+    let hasError = false;
+
+    if (urlList.length === 0) {
+      setListError("Agregá al menos una URL.");
+      hasError = true;
+    }
 
     let promptErr: string | null = null;
     if (!prompt.trim()) {
@@ -36,59 +62,124 @@ export function ScrapeForm({ onSubmit, loading, onCancel }: ScrapeFormProps) {
       promptErr = "La instrucción es demasiado corta — sé más específico.";
     }
     setPromptError(promptErr);
+    if (promptErr) hasError = true;
 
-    if ((generalError || lineErrors.length > 0) || promptErr) return;
+    if (hasError) return;
 
-    onSubmit(valid, prompt.trim());
+    onSubmit(urlList, prompt.trim());
   }
-
-  const hasUrlError = generalUrlError !== null || urlErrors.length > 0;
 
   return (
     <form className="card" onSubmit={handleSubmit} noValidate>
       <div className="field">
-        <label className="field__label" htmlFor="intel-urls">
+        <label className="field__label" htmlFor="intel-url-input">
           URLs a analizar
         </label>
-        <textarea
-          id="intel-urls"
-          className="textarea"
-          rows={6}
-          placeholder={"https://www.empresa1.com/contacto\nhttps://www.empresa2.com\nhttps://www.empresa3.com/obras"}
-          value={urlsRaw}
-          onChange={(e) => {
-            setUrlsRaw(e.target.value);
-            setUrlErrors([]);
-            setGeneralUrlError(null);
-          }}
-          aria-invalid={hasUrlError}
-          disabled={loading}
-        />
 
-        {/* Contador en vivo */}
-        {urlCount > 0 && !hasUrlError && (
-          <span className="field__hint">
-            {urlCount} URL{urlCount !== 1 ? "s" : ""} detectada{urlCount !== 1 ? "s" : ""}
-          </span>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            id="intel-url-input"
+            className="input"
+            type="text"
+            placeholder="https://www.empresa.com/contacto"
+            value={urlInput}
+            onChange={(e) => {
+              setUrlInput(e.target.value);
+              setUrlInputError(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddUrl();
+              }
+            }}
+            aria-invalid={urlInputError !== null}
+            disabled={loading}
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn"
+            onClick={handleAddUrl}
+            disabled={loading || urlList.length >= 50}
+          >
+            Agregar
+          </button>
+        </div>
+
+        {urlInputError && (
+          <span className="field__error">{urlInputError}</span>
         )}
 
-        {/* Error general (demasiadas URLs, ninguna, etc.) */}
-        {generalUrlError && (
-          <span className="field__error">{generalUrlError}</span>
-        )}
-
-        {/* Errores por línea */}
-        {urlErrors.length > 0 && (
-          <ul className="field__error" style={{ margin: "4px 0 0", paddingLeft: 16 }}>
-            {urlErrors.map((err) => (
-              <li key={err.line}>{err.message}</li>
+        {urlList.length > 0 && (
+          <ul
+            style={{
+              margin: "8px 0 0",
+              padding: 0,
+              listStyle: "none",
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+            }}
+          >
+            {urlList.map((url) => (
+              <li
+                key={url}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "#f1f5f9",
+                  borderRadius: 6,
+                  padding: "5px 10px",
+                  fontSize: 13,
+                }}
+              >
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={url}
+                >
+                  {url}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveUrl(url)}
+                  disabled={loading}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "#94a3b8",
+                    fontSize: 13,
+                    lineHeight: 1,
+                    flexShrink: 0,
+                    padding: "0 2px",
+                  }}
+                  aria-label={`Eliminar ${url}`}
+                >
+                  ✕
+                </button>
+              </li>
             ))}
           </ul>
         )}
 
-        {!hasUrlError && urlCount === 0 && (
+        {listError && (
+          <span className="field__error" style={{ marginTop: 4, display: "block" }}>
+            {listError}
+          </span>
+        )}
+
+        {!urlInputError && !listError && (
           <span className="field__hint">
-            Una URL por línea. HTTP o HTTPS. Máximo 50 URLs.
+            {urlList.length > 0
+              ? `${urlList.length} URL${urlList.length !== 1 ? "s" : ""} en la lista · máximo 50`
+              : "Ingresá una URL y presioná Agregar o Enter. Máximo 50 URLs."}
           </span>
         )}
       </div>

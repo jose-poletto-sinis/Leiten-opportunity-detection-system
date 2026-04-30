@@ -182,7 +182,8 @@ export default function HistorialPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th scope="col">Fecha</th>
+                  <th scope="col">Fecha extracción</th>
+                  <th scope="col">Estado</th>
                   <th scope="col">URL</th>
                   <th scope="col">Prompt</th>
                   <th scope="col" style={{ textAlign: "right" }}>Filas</th>
@@ -286,6 +287,26 @@ export default function HistorialPage() {
   );
 }
 
+function StatusBadge({ status }: { status: string }) {
+  const isPendiente = status === "pendiente";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 4,
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        background: isPendiente ? "#fef3c7" : "#dcfce7",
+        color: isPendiente ? "#92400e" : "#15803d",
+      }}
+    >
+      {status}
+    </span>
+  );
+}
+
 function HistorialRow({
   item,
   onOpenDetail,
@@ -310,6 +331,7 @@ function HistorialRow({
   return (
     <tr>
       <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{date}</td>
+      <td><StatusBadge status={item.status} /></td>
       <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         <a href={item.url} target="_blank" rel="noreferrer" title={item.url}>
           {item.url}
