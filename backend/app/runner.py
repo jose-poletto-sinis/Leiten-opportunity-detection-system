@@ -4,12 +4,20 @@ Wrapper alrededor de Scrapy para correrlo desde un proceso síncrono (FastAPI).
 Usa `crochet` para integrar el reactor de Twisted con código async/sync.
 Cada llamada arranca el reactor (idempotente), corre el spider con la URL
 solicitada y devuelve el item resultante.
+
+Para URLs que apuntan directamente a un PDF (path terminado en .pdf) se omite
+Scrapy y se extrae el texto con pdfplumber.
 """
 from __future__ import annotations
 
+import io
 import logging
+from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
+import httpx
+import pdfplumber
 from crochet import setup as crochet_setup, wait_for
 from scrapy.crawler import CrawlerRunner
 from scrapy.utils.project import get_project_settings
@@ -55,10 +63,44 @@ def _run_spider_blocking(target_url: str, timeout_seconds: int) -> list[dict[str
     return deferred
 
 
+def _is_pdf_url(url: str) -> bool:
+    return urlparse(url).path.lower().endswith(".pdf")
+
+
+def _fetch_pdf(url: str, timeout_seconds: int) -> dict[str, Any]:
+    response = httpx.get(url, timeout=timeout_seconds, follow_redirects=True)
+    response.raise_for_status()
+
+    pages_text: list[str] = []
+    with pdfplumber.open(io.BytesIO(response.content)) as pdf:
+        for page in pdf.pages:
+            extracted = page.extract_text()
+            if extracted:
+                pages_text.append(extracted)
+
+    full_text = "\n".join(pages_text)
+
+    return {
+        "url": url,
+        "final_url": str(response.url),
+        "status": response.status_code,
+        "title": "",
+        "html": "",
+        "text": full_text[:200_000],
+        "meta": {"meta_tags": {}, "jsonld": []},
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def fetch_page(target_url: str, timeout_seconds: int = 75) -> dict[str, Any]:
     """
     Devuelve el item de la página o lanza RuntimeError si no se pudo obtener.
+    Si la URL termina en .pdf, extrae el texto del PDF directamente.
     """
+    if _is_pdf_url(target_url):
+        logger.info("URL detectada como PDF, extrayendo con pdfplumber: %s", target_url)
+        return _fetch_pdf(target_url, timeout_seconds)
+
     items = _run_spider_blocking(target_url, timeout_seconds)
     if not items:
         raise RuntimeError(
