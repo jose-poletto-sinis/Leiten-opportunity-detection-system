@@ -16,9 +16,6 @@ export default function HistorialPage() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
 
-  const [detailRecord, setDetailRecord] = useState<RecordDetail | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -44,18 +41,6 @@ export default function HistorialPage() {
     e.preventDefault();
     setOffset(0);
     setSearch(searchInput);
-  }
-
-  async function handleOpenDetail(savedId: string) {
-    setDetailLoading(true);
-    try {
-      const record = await getRecordDetail(savedId);
-      setDetailRecord(record);
-    } catch (err) {
-      setErrorMsg(formatErr(err));
-    } finally {
-      setDetailLoading(false);
-    }
   }
 
   const total = data?.total ?? 0;
@@ -89,7 +74,7 @@ export default function HistorialPage() {
       )}
 
       {/* Filtros */}
-      <div className="card" style={{ marginBottom: 8 }}>
+      <div className="card" style={{ marginBottom: 12 }}>
         <form onSubmit={handleSearch} style={{ display: "flex", gap: 8 }}>
           <input
             className="input"
@@ -118,48 +103,34 @@ export default function HistorialPage() {
         </form>
       </div>
 
-      {/* Tabla */}
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        {loading ? (
-          <div className="loader" style={{ padding: 24 }} role="status">
-            <span className="loader__spinner" aria-hidden="true" />
-            <span>Cargando historial...</span>
-          </div>
-        ) : !data || data.items.length === 0 ? (
-          <div className="empty-state" style={{ padding: 32 }}>
-            {search ? `Sin resultados para "${search}".` : "No hay registros guardados todavía."}
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th scope="col">Fecha extracción</th>
-                  <th scope="col">Estado</th>
-                  <th scope="col">URL</th>
-                  <th scope="col">Prompt</th>
-                  <th scope="col" style={{ textAlign: "right" }}>Filas</th>
-                  <th scope="col">Usuario</th>
-                  <th scope="col" style={{ width: 60 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((item) => (
-                  <HistorialRow
-                    key={item.saved_id}
-                    item={item}
-                    onOpenDetail={handleOpenDetail}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      {/* Lista de extracciones */}
+      {loading ? (
+        <div className="loader" style={{ padding: 24 }} role="status">
+          <span className="loader__spinner" aria-hidden="true" />
+          <span>Cargando historial...</span>
+        </div>
+      ) : !data || data.items.length === 0 ? (
+        <div className="empty-state" style={{ padding: 32 }}>
+          {search ? `Sin resultados para "${search}".` : "No hay registros guardados todavía."}
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {data.items.map((item) => (
+            <HistorialCard key={item.saved_id} item={item} />
+          ))}
+        </div>
+      )}
 
       {/* Paginación */}
       {total > 0 && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginTop: 16,
+          }}
+        >
           <span className="meta-line">
             {from}–{to} de {total}
           </span>
@@ -181,33 +152,128 @@ export default function HistorialPage() {
           </div>
         </div>
       )}
-
-      {/* Modal de detalle */}
-      {(detailRecord || detailLoading) && (
-        <Modal onClose={() => setDetailRecord(null)}>
-          {detailLoading ? (
-            <div className="loader" role="status">
-              <span className="loader__spinner" aria-hidden="true" />
-              <span>Cargando detalle...</span>
-            </div>
-          ) : detailRecord ? (
-            <>
-              <div style={{ marginBottom: 12 }}>
-                <p className="meta-line" style={{ margin: 0 }}>
-                  <a href={detailRecord.url} target="_blank" rel="noreferrer">
-                    {detailRecord.url}
-                  </a>
-                </p>
-                <p className="meta-line" style={{ margin: "4px 0 0" }}>
-                  {detailRecord.prompt}
-                </p>
-              </div>
-              <ResultsTable columns={detailRecord.columns} rows={detailRecord.rows} />
-            </>
-          ) : null}
-        </Modal>
-      )}
     </main>
+  );
+}
+
+function HistorialCard({ item }: { item: RecordSummary }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [detail, setDetail] = useState<RecordDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const d = await getRecordDetail(item.saved_id);
+        if (!cancelled) setDetail(d);
+      } catch (err) {
+        if (!cancelled) setDetailError(formatErr(err));
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.saved_id]);
+
+  const date = new Date(item.created_at).toLocaleString("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const promptShort =
+    item.prompt.length > 80 ? item.prompt.slice(0, 80) + "…" : item.prompt;
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      {/* Cabecera */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "10px 16px",
+          borderBottom: collapsed ? "none" : "1px solid #e5e7eb",
+          flexWrap: "wrap",
+          background: "#fafafa",
+        }}
+      >
+        <StatusBadge status={item.status} />
+
+        <span style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>
+          {date}
+        </span>
+
+        <a
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          title={item.url}
+          style={{
+            fontSize: 13,
+            flex: 1,
+            minWidth: 120,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {item.url}
+        </a>
+
+        <span
+          title={item.prompt}
+          style={{
+            fontSize: 12,
+            color: "#555",
+            maxWidth: 320,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {promptShort}
+        </span>
+
+        <span style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>
+          {item.row_count} {item.row_count === 1 ? "fila" : "filas"}
+        </span>
+
+        <button
+          type="button"
+          className="btn btn--ghost"
+          style={{ padding: "2px 10px", fontSize: 12, whiteSpace: "nowrap" }}
+          onClick={() => setCollapsed((c) => !c)}
+        >
+          {collapsed ? "Expandir ▼" : "Colapsar ▲"}
+        </button>
+      </div>
+
+      {/* Grilla de resultados */}
+      {!collapsed && (
+        <div>
+          {detailLoading ? (
+            <div className="loader" style={{ padding: 16 }} role="status">
+              <span className="loader__spinner" aria-hidden="true" />
+              <span>Cargando datos...</span>
+            </div>
+          ) : detailError ? (
+            <div className="banner banner--error" style={{ margin: 12 }}>
+              {detailError}
+            </div>
+          ) : detail ? (
+            <ResultsTable columns={detail.columns} rows={detail.rows} />
+          ) : null}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -224,108 +290,11 @@ function StatusBadge({ status }: { status: string }) {
         textTransform: "uppercase",
         background: isPendiente ? "#fef3c7" : "#dcfce7",
         color: isPendiente ? "#92400e" : "#15803d",
+        whiteSpace: "nowrap",
       }}
     >
       {status}
     </span>
-  );
-}
-
-function HistorialRow({
-  item,
-  onOpenDetail,
-}: {
-  item: RecordSummary;
-  onOpenDetail: (id: string) => void;
-}) {
-  const date = new Date(item.created_at).toLocaleString("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  const promptShort = item.prompt.length > 60 ? item.prompt.slice(0, 60) + "…" : item.prompt;
-
-  return (
-    <tr>
-      <td style={{ whiteSpace: "nowrap", fontSize: 12 }}>{date}</td>
-      <td><StatusBadge status={item.status} /></td>
-      <td style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        <a href={item.url} target="_blank" rel="noreferrer" title={item.url}>
-          {item.url}
-        </a>
-      </td>
-      <td style={{ maxWidth: 240 }}>
-        <span title={item.prompt}>{promptShort}</span>
-      </td>
-      <td style={{ textAlign: "right" }}>{item.row_count}</td>
-      <td style={{ fontSize: 12, color: "#888" }}>{item.user_id ?? "—"}</td>
-      <td>
-        <button
-          type="button"
-          className="btn btn--ghost"
-          style={{ padding: "2px 8px", fontSize: 12 }}
-          onClick={() => onOpenDetail(item.saved_id)}
-        >
-          Ver
-        </button>
-      </td>
-    </tr>
-  );
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.4)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 100,
-        padding: 16,
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          maxWidth: 900,
-          width: "100%",
-          maxHeight: "85vh",
-          overflowY: "auto",
-          position: "relative",
-        }}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          style={{
-            position: "absolute",
-            top: 12,
-            right: 12,
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            fontSize: 18,
-            lineHeight: 1,
-            color: "#888",
-          }}
-          aria-label="Cerrar"
-        >
-          ✕
-        </button>
-        {children}
-      </div>
-    </div>
   );
 }
 
