@@ -31,6 +31,10 @@ class Settings:
     # En producción: postgresql://user:pass@host:5432/dbname
     database_url: str
 
+    google_maps_api_key: str
+    apollo_api_key: str
+    hunter_api_key: str
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -50,4 +54,7 @@ def get_settings() -> Settings:
             "LeitenIntelBot/1.0 (+https://leiten.com/contacto)",
         ),
         database_url=os.getenv("DATABASE_URL", ""),
+        google_maps_api_key=os.getenv("GOOGLE_MAPS_API_KEY", ""),
+        apollo_api_key=os.getenv("APOLLO_API_KEY", ""),
+        hunter_api_key=os.getenv("HUNTER_API_KEY", ""),
     )

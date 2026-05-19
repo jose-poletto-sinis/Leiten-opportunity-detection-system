@@ -1,319 +1,304 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { ScrapeForm } from "../../components/ScrapeForm";
+import { useEffect, useState } from "react";
 import { ResultsTable } from "../../components/ResultsTable";
-import { ApiError, scrapeBatch, saveBatch } from "../../lib/api";
-import type { BatchScrapeResponse, BatchScrapeItemResponse } from "../../lib/types";
+import {
+  ApiError,
+  deleteRegisteredUrl,
+  getRegisteredUrls,
+  registerUrl,
+  scrapeRegisteredUrl,
+  updateFrecuencia,
+} from "../../lib/api";
+import type { Frecuencia, RegisteredUrl, ScrapeNowResponse } from "../../lib/types";
+import { isValidUrl } from "../../lib/validators";
 
-type Status = "idle" | "loading" | "result" | "error";
-
-export default function IntelScrapePage() {
-  const [status, setStatus] = useState<Status>("idle");
-  const [batchResult, setBatchResult] = useState<BatchScrapeResponse | null>(null);
-  const [expandedUrls, setExpandedUrls] = useState<Set<string>>(new Set());
+export default function IntelPage() {
+  const [urls, setUrls] = useState<RegisteredUrl[]>([]);
+  const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [actionInFlight, setActionInFlight] = useState<"save" | "discard" | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
 
-  async function handleSubmit(urls: string[], prompt: string) {
-    setStatus("loading");
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    setBatchResult(null);
-    setExpandedUrls(new Set());
+  // Formulario de nueva URL
+  const [newUrl, setNewUrl] = useState("");
+  const [newUrlError, setNewUrlError] = useState<string | null>(null);
+  const [newFrecuencia, setNewFrecuencia] = useState<Frecuencia>("semanal");
+  const [submitting, setSubmitting] = useState(false);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+  // Scrape manual en curso
+  const [scrapingId, setScrapingId] = useState<string | null>(null);
+  const [scrapeResult, setScrapeResult] = useState<ScrapeNowResponse | null>(null);
 
+  async function fetchUrls() {
+    setLoading(true);
     try {
-      const data = await scrapeBatch(
-        { urls, prompt, user_id: getUserHint() },
-        controller.signal,
+      setUrls(await getRegisteredUrls());
+    } catch (err) {
+      setErrorMsg(formatErr(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchUrls(); }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = newUrl.trim();
+    if (!trimmed) { setNewUrlError("Ingresá una URL."); return; }
+    if (!isValidUrl(trimmed)) { setNewUrlError("URL inválida."); return; }
+    setNewUrlError(null);
+    setSubmitting(true);
+    setErrorMsg(null);
+    try {
+      const created = await registerUrl({ url: trimmed, frecuencia: newFrecuencia, cargado_por: getUserHint() });
+      setUrls((prev) => [created, ...prev]);
+      setNewUrl("");
+      setSuccessMsg(`URL registrada con scraping ${newFrecuencia}.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+    } catch (err) {
+      setErrorMsg(formatErr(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteRegisteredUrl(id);
+      setUrls((prev) => prev.filter((u) => u.id !== id));
+    } catch (err) {
+      setErrorMsg(formatErr(err));
+    }
+  }
+
+  async function handleFrecuenciaChange(id: string, frecuencia: Frecuencia) {
+    try {
+      const updated = await updateFrecuencia(id, frecuencia);
+      setUrls((prev) => prev.map((u) => (u.id === id ? updated : u)));
+    } catch (err) {
+      setErrorMsg(formatErr(err));
+    }
+  }
+
+  async function handleScrapeNow(id: string) {
+    setScrapingId(id);
+    setScrapeResult(null);
+    setErrorMsg(null);
+    try {
+      const result = await scrapeRegisteredUrl(id);
+      setScrapeResult(result);
+      setUrls((prev) =>
+        prev.map((u) =>
+          u.id === id ? { ...u, fecha_ultimo_scraping: new Date().toISOString() } : u
+        )
       );
-      setBatchResult(data);
-      setStatus("result");
-      // La primera URL empieza expandida
-      if (data.results.length > 0) {
-        setExpandedUrls(new Set([data.results[0].url]));
-      }
-    } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        setStatus("idle");
-        return;
-      }
-      setStatus("error");
-      setErrorMsg(formatErr(err));
-    } finally {
-      abortRef.current = null;
-    }
-  }
-
-  function handleCancel() {
-    abortRef.current?.abort();
-  }
-
-  function toggleExpanded(url: string) {
-    setExpandedUrls((prev) => {
-      const next = new Set(prev);
-      if (next.has(url)) {
-        next.delete(url);
-      } else {
-        next.add(url);
-      }
-      return next;
-    });
-  }
-
-  async function handleSaveAll() {
-    if (!batchResult) return;
-    const okResults = batchResult.results.filter((r) => r.status === "ok" && r.rows.length > 0);
-    if (okResults.length === 0) return;
-
-    setActionInFlight("save");
-    setErrorMsg(null);
-    try {
-      const res = await saveBatch({
-        results: okResults.map((r) => ({
-          request_id: r.request_id,
-          url: r.url,
-          columns: r.columns,
-          rows: r.rows,
-        })),
-        prompt: batchResult.prompt,
-        user_id: getUserHint(),
-      });
-      setSuccessMsg(`${res.message} (${res.total_persisted_rows} registro/s en ${res.saved_ids.length} URL/s).`);
-      setBatchResult(null);
-      setStatus("idle");
     } catch (err) {
       setErrorMsg(formatErr(err));
     } finally {
-      setActionInFlight(null);
+      setScrapingId(null);
     }
   }
-
-  async function handleDiscardAll() {
-    if (!batchResult) return;
-    setActionInFlight("discard");
-    setErrorMsg(null);
-    try {
-      // El discard del batch no tiene endpoint dedicado — simplemente descartamos en el front.
-      // El audit log de cada URL ya quedó registrado al hacer scrape.
-      setSuccessMsg("Información descartada. No se persistió ningún registro.");
-      setBatchResult(null);
-      setStatus("idle");
-    } finally {
-      setActionInFlight(null);
-    }
-  }
-
-  const okCount = batchResult?.results.filter((r) => r.status === "ok" && r.rows.length > 0).length ?? 0;
 
   return (
     <main className="page">
       <header className="page__header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1 className="page__title">Extracción inteligente desde web</h1>
+            <h1 className="page__title">URLs monitoreadas</h1>
             <p className="page__subtitle">
-              Pegá una o varias URLs (una por línea) e indicá qué información extraer.
-              El sistema analiza automáticamente datos de empresas, obras y desarrolladoras.
+              Registrá sitios web para que el sistema los analice automáticamente según la frecuencia elegida.
             </p>
           </div>
-          <Link href="/intel/historial" className="btn btn--ghost" style={{ whiteSpace: "nowrap", marginLeft: 16 }}>
-            Ver historial →
-          </Link>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Link href="/resultados" className="btn btn--ghost" style={{ whiteSpace: "nowrap" }}>
+              Ver resultados →
+            </Link>
+            <Link href="/intel/historial" className="btn btn--ghost" style={{ whiteSpace: "nowrap" }}>
+              Historial
+            </Link>
+          </div>
         </div>
       </header>
 
       {successMsg && (
-        <div className="banner banner--success" role="status">
-          {successMsg}
-        </div>
+        <div className="banner banner--success" role="status">{successMsg}</div>
       )}
       {errorMsg && (
         <div className="banner banner--error" role="alert">
           {errorMsg}
+          <button type="button" onClick={() => setErrorMsg(null)} style={{ marginLeft: 8, background: "none", border: "none", cursor: "pointer", fontWeight: 700 }}>✕</button>
         </div>
       )}
 
-      <ScrapeForm
-        onSubmit={handleSubmit}
-        loading={status === "loading"}
-        onCancel={handleCancel}
-      />
-
-      {status === "loading" && (
-        <div className="card">
-          <div className="loader" role="status" aria-live="polite">
-            <span className="loader__spinner" aria-hidden="true" />
-            <span>
-              Analizando las páginas y extrayendo información... esto puede demorar
-              hasta ~75 segundos por URL.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {status === "result" && batchResult && (
-        <section>
-          {/* Resumen del batch */}
-          <div className="card" style={{ marginBottom: 0 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <p className="meta-line" style={{ margin: 0 }}>
-                {batchResult.total_urls} URL/s procesadas ·{" "}
-                <span style={{ color: "var(--color-success, #16a34a)" }}>
-                  {batchResult.ok_count} exitosas
-                </span>
-                {batchResult.error_count > 0 && (
-                  <span style={{ color: "var(--color-error, #dc2626)" }}>
-                    {" "}· {batchResult.error_count} con error
-                  </span>
-                )}
-              </p>
-              <div className="button-row" style={{ margin: 0 }}>
-                <button
-                  className="btn"
-                  onClick={handleSaveAll}
-                  disabled={actionInFlight !== null || okCount === 0}
-                >
-                  {actionInFlight === "save" ? "Guardando..." : `Guardar todo (${okCount})`}
-                </button>
-                <button
-                  className="btn btn--ghost"
-                  onClick={handleDiscardAll}
-                  disabled={actionInFlight !== null}
-                >
-                  {actionInFlight === "discard" ? "Descartando..." : "Descartar todo"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Sección colapsable por URL */}
-          {batchResult.results.map((item) => (
-            <UrlResultSection
-              key={item.url}
-              item={item}
-              expanded={expandedUrls.has(item.url)}
-              onToggle={() => toggleExpanded(item.url)}
+      {/* Formulario de alta */}
+      <form className="card" onSubmit={handleAdd} noValidate>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <input
+              className="input"
+              type="text"
+              placeholder="https://www.empresa.com/contacto"
+              value={newUrl}
+              onChange={(e) => { setNewUrl(e.target.value); setNewUrlError(null); }}
+              aria-invalid={newUrlError !== null}
+              disabled={submitting}
+              style={{ width: "100%" }}
             />
-          ))}
-        </section>
+            {newUrlError && <span className="field__error">{newUrlError}</span>}
+          </div>
+          <select
+            className="input"
+            value={newFrecuencia}
+            onChange={(e) => setNewFrecuencia(e.target.value as Frecuencia)}
+            disabled={submitting}
+            style={{ width: 130, flexShrink: 0 }}
+          >
+            <option value="diaria">Diaria</option>
+            <option value="semanal">Semanal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+          <button type="submit" className="btn" disabled={submitting} style={{ flexShrink: 0 }}>
+            {submitting ? "Guardando..." : "Agregar URL"}
+          </button>
+        </div>
+      </form>
+
+      {/* Tabla de URLs registradas */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+        {loading ? (
+          <div className="loader" style={{ padding: 24 }}>
+            <span className="loader__spinner" aria-hidden="true" />
+            <span>Cargando...</span>
+          </div>
+        ) : urls.length === 0 ? (
+          <div className="empty-state" style={{ padding: 32 }}>
+            No hay URLs registradas todavía. Agregá la primera arriba.
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th scope="col">URL</th>
+                  <th scope="col">Frecuencia</th>
+                  <th scope="col">Último scraping</th>
+                  <th scope="col" style={{ width: 180 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {urls.map((u) => (
+                  <UrlRow
+                    key={u.id}
+                    item={u}
+                    scraping={scrapingId === u.id}
+                    onDelete={handleDelete}
+                    onFrecuenciaChange={handleFrecuenciaChange}
+                    onScrapeNow={handleScrapeNow}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Resultado del scrape manual */}
+      {scrapeResult && (
+        <div className="card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <p className="meta-line" style={{ margin: 0 }}>
+              Resultado de <a href={scrapeResult.url} target="_blank" rel="noreferrer">{scrapeResult.url}</a>
+              {" · "}{scrapeResult.elapsed_ms} ms
+            </p>
+            <button type="button" className="btn btn--ghost" style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => setScrapeResult(null)}>
+              Cerrar
+            </button>
+          </div>
+          {scrapeResult.warnings.length > 0 && (
+            <div className="banner banner--warning" style={{ marginBottom: 12 }}>
+              {scrapeResult.warnings.map((w, i) => <div key={i}>{w}</div>)}
+            </div>
+          )}
+          {scrapeResult.rows.length === 0 ? (
+            <div className="empty-state">No se encontraron datos en esta página.</div>
+          ) : (
+            <ResultsTable columns={scrapeResult.columns} rows={scrapeResult.rows} />
+          )}
+        </div>
       )}
     </main>
   );
 }
 
-function UrlResultSection({
+function UrlRow({
   item,
-  expanded,
-  onToggle,
+  scraping,
+  onDelete,
+  onFrecuenciaChange,
+  onScrapeNow,
 }: {
-  item: BatchScrapeItemResponse;
-  expanded: boolean;
-  onToggle: () => void;
+  item: RegisteredUrl;
+  scraping: boolean;
+  onDelete: (id: string) => void;
+  onFrecuenciaChange: (id: string, f: Frecuencia) => void;
+  onScrapeNow: (id: string) => void;
 }) {
-  return (
-    <div className="card" style={{ marginTop: 8 }}>
-      {/* Header colapsable */}
-      <button
-        type="button"
-        onClick={onToggle}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-          textAlign: "left",
-        }}
-      >
-        <StatusBadge status={item.status} />
-        <span
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            fontSize: 13,
-            fontWeight: 500,
-          }}
-          title={item.url}
-        >
-          {item.url}
-        </span>
-        {item.status === "ok" && (
-          <span className="meta-line" style={{ whiteSpace: "nowrap", margin: 0, fontSize: 12 }}>
-            {item.rows.length} fila/s · {item.elapsed_ms} ms
-          </span>
-        )}
-        <span style={{ fontSize: 12, color: "#888", marginLeft: 4 }}>
-          {expanded ? "▲" : "▼"}
-        </span>
-      </button>
+  const lastScraping = item.fecha_ultimo_scraping
+    ? new Date(item.fecha_ultimo_scraping).toLocaleString("es-AR", {
+        day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+      })
+    : "—";
 
-      {/* Contenido */}
-      {expanded && (
-        <div style={{ marginTop: 12 }}>
-          {item.status === "error" ? (
-            <div className="banner banner--error" style={{ margin: 0 }}>
-              {item.error_message ?? "Error desconocido al procesar la URL."}
-            </div>
-          ) : (
-            <>
-              {item.warnings.length > 0 && (
-                <div className="banner banner--warning" style={{ marginBottom: 12 }}>
-                  {item.warnings.map((w, i) => (
-                    <div key={i}>{w}</div>
-                  ))}
-                </div>
-              )}
-              <ResultsTable columns={item.columns} rows={item.rows} />
-            </>
-          )}
+  return (
+    <tr>
+      <td style={{ maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <a href={item.url} target="_blank" rel="noreferrer" title={item.url}>{item.url}</a>
+      </td>
+      <td>
+        <select
+          className="input"
+          value={item.frecuencia}
+          onChange={(e) => onFrecuenciaChange(item.id, e.target.value as Frecuencia)}
+          style={{ fontSize: 13, padding: "2px 6px", height: "auto" }}
+        >
+          <option value="diaria">Diaria</option>
+          <option value="semanal">Semanal</option>
+          <option value="mensual">Mensual</option>
+        </select>
+      </td>
+      <td style={{ fontSize: 12, color: "#888", whiteSpace: "nowrap" }}>{lastScraping}</td>
+      <td>
+        <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="btn"
+            style={{ fontSize: 12, padding: "3px 10px" }}
+            onClick={() => onScrapeNow(item.id)}
+            disabled={scraping}
+          >
+            {scraping ? "Analizando..." : "Analizar ahora"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            style={{ fontSize: 12, padding: "3px 8px", color: "var(--danger)" }}
+            onClick={() => onDelete(item.id)}
+            disabled={scraping}
+          >
+            ✕
+          </button>
         </div>
-      )}
-    </div>
+      </td>
+    </tr>
   );
 }
 
-function StatusBadge({ status }: { status: "ok" | "error" }) {
-  const styles: React.CSSProperties = {
-    display: "inline-block",
-    padding: "2px 8px",
-    borderRadius: 4,
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    flexShrink: 0,
-    background: status === "ok" ? "#dcfce7" : "#fee2e2",
-    color: status === "ok" ? "#15803d" : "#b91c1c",
-  };
-  return <span style={styles}>{status === "ok" ? "OK" : "Error"}</span>;
-}
-
 function formatErr(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.errorCode === "SCRAPE_TIMEOUT") {
-      return "El análisis superó el tiempo máximo. Probá con otra URL o reintentá más tarde.";
-    }
-    if (err.errorCode === "SCRAPE_FAILED") {
-      return "No se pudo obtener contenido de la URL. Verificá que sea pública y accesible.";
-    }
-    if (err.errorCode === "EXTRACTION_FAILED") {
-      return "El extractor falló al procesar la página. Reintentá en unos minutos.";
-    }
-    return err.message;
-  }
+  if (err instanceof ApiError) return err.message;
   if (err instanceof Error) return err.message;
-  return "Error desconocido al comunicarse con el servicio.";
+  return "Error desconocido.";
 }
 
 function getUserHint(): string | undefined {

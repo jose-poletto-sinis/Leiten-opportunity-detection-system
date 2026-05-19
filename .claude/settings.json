@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(az resource *)",
+      "Bash(az containerapp *)",
+      "Bash(az staticwebapp *)",
+      "Bash(az postgres *)",
+      "Bash(curl -s http://localhost:8080/healthz)",
+      "PowerShell(Stop-Process -Id 28728 -Force)",
+      "PowerShell(az webapp stop --resource-group rg-leiten-apps --name leiten-intel-scraper --output none 2>&1)",
+      "PowerShell(az webapp start --resource-group rg-leiten-apps --name leiten-intel-scraper --output none 2>&1)",
+      "PowerShell(az webapp restart --resource-group rg-leiten-apps --name leiten-intel-scraper --output none 2>&1)"
+    ]
+  }
+}
