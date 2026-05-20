@@ -430,7 +430,7 @@ export default function TareasPage() {
               <table style={S.table}>
                 <thead>
                   <tr>
-                    {["Nombre", "URL", "Inicio", "Fin", "Frecuencia", "Prompt", "Acciones"].map((h) => (
+                    {["Nombre", "URL", "Inicio", "Fin", "Frecuencia", "Prompt", "Último scraping", "Acciones"].map((h) => (
                       <th key={h} style={S.th}>{h}</th>
                     ))}
                   </tr>
@@ -462,6 +462,11 @@ export default function TareasPage() {
                         {t.prompt
                           ? t.prompt.slice(0, 45) + (t.prompt.length > 45 ? "…" : "")
                           : <span style={{ color: "#cbd5e1" }}>—</span>}
+                      </td>
+                      <td style={{ ...S.td, fontSize: 12, color: "#64748b", whiteSpace: "nowrap" }}>
+                        {t.fecha_ultimo_scraping
+                          ? new Date(t.fecha_ultimo_scraping).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })
+                          : <span style={{ color: "#475569" }}>Nunca</span>}
                       </td>
                       <td style={S.td}>
                         <div style={{ display: "flex", gap: 6 }}>
