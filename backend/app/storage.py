@@ -119,6 +119,17 @@ def _ensure_db() -> None:
                 expires_at TEXT NOT NULL
             )
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS enrichment_processes (
+                id TEXT PRIMARY KEY,
+                nombre TEXT NOT NULL,
+                descripcion TEXT,
+                tipo TEXT NOT NULL UNIQUE,
+                endpoint TEXT,
+                activo INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL
+            )
+        """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_request ON scrape_audit_log(request_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_records_url ON scrape_records(url)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_records_user ON scrape_records(user_id)"))
@@ -598,3 +609,88 @@ def delete_record(saved_id: str, user_id: str | None = None) -> bool:
         payload={"saved_id": saved_id},
     )
     return True
+
+
+# ─── Procesos de enriquecimiento ─────────────────────────────────────────────
+
+_ENRICHMENT_SEED = [
+    {
+        "id": "enrich-afip",
+        "nombre": "Consulta AFIP por CUIT",
+        "descripcion": "Obtiene razón social, estado, actividad principal y domicilio fiscal a partir del CUIT.",
+        "tipo": "afip",
+        "endpoint": "POST /v1/intel/enrich/afip",
+    },
+    {
+        "id": "enrich-maps",
+        "nombre": "Búsqueda en Google Maps",
+        "descripcion": "Encuentra una empresa por nombre o dirección y devuelve lugar, teléfono, web, rating y categorías.",
+        "tipo": "maps",
+        "endpoint": "POST /v1/intel/enrich/maps",
+    },
+    {
+        "id": "enrich-obras",
+        "nombre": "Radar de obras por zona",
+        "descripcion": "Detecta obras en construcción dentro de un radio geográfico usando coordenadas lat/lng.",
+        "tipo": "obras",
+        "endpoint": "POST /v1/intel/obras/search",
+    },
+    {
+        "id": "enrich-apollo-org",
+        "nombre": "Datos de empresa vía Apollo",
+        "descripcion": "Obtiene información organizacional (empleados, industria, tecnologías, redes sociales) por dominio web.",
+        "tipo": "apollo_org",
+        "endpoint": "POST /v1/intel/enrich/apollo/org",
+    },
+    {
+        "id": "enrich-apollo-people",
+        "nombre": "Búsqueda de contactos vía Apollo",
+        "descripcion": "Busca personas por empresa y cargo para identificar tomadores de decisión.",
+        "tipo": "apollo_people",
+        "endpoint": "POST /v1/intel/enrich/apollo/people",
+    },
+    {
+        "id": "enrich-apollo-reveal",
+        "nombre": "Revelar contacto Apollo",
+        "descripcion": "Obtiene email y teléfono verificados de un contacto identificado por su Apollo ID.",
+        "tipo": "apollo_reveal",
+        "endpoint": "POST /v1/intel/enrich/apollo/reveal",
+    },
+]
+
+
+def _seed_enrichment_processes(conn: Any) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    for p in _ENRICHMENT_SEED:
+        conn.execute(
+            text("""INSERT INTO enrichment_processes (id, nombre, descripcion, tipo, endpoint, activo, created_at)
+                    VALUES (:id, :nombre, :descripcion, :tipo, :endpoint, 1, :created_at)
+                    ON CONFLICT (tipo) DO NOTHING""")
+            if _get_engine().dialect.name == "postgresql"
+            else text("""INSERT OR IGNORE INTO enrichment_processes (id, nombre, descripcion, tipo, endpoint, activo, created_at)
+                    VALUES (:id, :nombre, :descripcion, :tipo, :endpoint, 1, :created_at)"""),
+            {**p, "created_at": now},
+        )
+
+
+def list_enrichment_processes(only_active: bool = False) -> list[dict[str, Any]]:
+    _ensure_db()
+    with _connect() as conn:
+        _seed_enrichment_processes(conn)
+        conn.commit()
+        where = "WHERE activo = 1" if only_active else ""
+        rows = conn.execute(
+            text(f"SELECT id, nombre, descripcion, tipo, endpoint, activo, created_at FROM enrichment_processes {where} ORDER BY created_at ASC")
+        ).mappings().fetchall()
+    return [dict(r) for r in rows]
+
+
+def toggle_enrichment_process(process_id: str, activo: bool) -> bool:
+    _ensure_db()
+    with _connect() as conn:
+        result = conn.execute(
+            text("UPDATE enrichment_processes SET activo = :activo WHERE id = :id"),
+            {"activo": 1 if activo else 0, "id": process_id},
+        )
+        conn.commit()
+    return result.rowcount > 0

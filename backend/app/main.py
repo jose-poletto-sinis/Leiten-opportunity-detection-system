@@ -95,6 +95,7 @@ from .storage import (
     get_session,
     get_system_config,
     get_urls_due_for_scraping,
+    list_enrichment_processes,
     list_records,
     list_registered_urls,
     log_audit,
@@ -102,6 +103,7 @@ from .storage import (
     register_url,
     save_record,
     set_system_config,
+    toggle_enrichment_process,
     update_registered_url,
 )
 
@@ -982,6 +984,24 @@ async def enrich_hunter(req: HunterRequest) -> HunterResponse:
         **result,
         emails=[HunterEmail(**e) for e in emails],
     )
+
+
+# ─── Procesos de enriquecimiento ─────────────────────────────────────────────
+
+@app.get("/v1/intel/enrichment-processes")
+async def get_enrichment_processes(only_active: bool = Query(default=False)) -> list[dict]:
+    return list_enrichment_processes(only_active=only_active)
+
+
+@app.patch("/v1/intel/enrichment-processes/{process_id}")
+async def patch_enrichment_process(process_id: str, body: dict) -> dict:
+    activo = body.get("activo")
+    if activo is None:
+        raise HTTPException(status_code=400, detail={"error_code": "BAD_REQUEST", "message": "Campo 'activo' requerido."})
+    updated = toggle_enrichment_process(process_id, bool(activo))
+    if not updated:
+        raise HTTPException(status_code=404, detail={"error_code": "NOT_FOUND", "message": "Proceso no encontrado."})
+    return {"status": "ok", "id": process_id, "activo": activo}
 
 
 # ─── Export CSV ───────────────────────────────────────────────────────────────
