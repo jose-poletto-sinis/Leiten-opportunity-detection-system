@@ -124,8 +124,7 @@ def _ensure_db() -> None:
                 id TEXT PRIMARY KEY,
                 nombre TEXT NOT NULL,
                 descripcion TEXT,
-                tipo TEXT NOT NULL UNIQUE,
-                endpoint TEXT,
+                entrada TEXT NOT NULL,
                 activo INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL
             )
@@ -153,6 +152,10 @@ def _ensure_db() -> None:
             conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"))
             conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_fin TEXT"))
             conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS frecuencia_baja INTEGER NOT NULL DEFAULT 0"))
+            # Migrar enrichment_processes al nuevo schema (drop columnas tipo/endpoint si existen)
+            conn.execute(text("ALTER TABLE enrichment_processes DROP COLUMN IF EXISTS tipo"))
+            conn.execute(text("ALTER TABLE enrichment_processes DROP COLUMN IF EXISTS endpoint"))
+            conn.execute(text("ALTER TABLE enrichment_processes ADD COLUMN IF NOT EXISTS entrada TEXT NOT NULL DEFAULT ''"))
         else:
             for stmt in [
                 "ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'",
@@ -615,60 +618,49 @@ def delete_record(saved_id: str, user_id: str | None = None) -> bool:
 
 _ENRICHMENT_SEED = [
     {
-        "id": "enrich-afip",
-        "nombre": "Consulta AFIP por CUIT",
-        "descripcion": "Obtiene razón social, estado, actividad principal y domicilio fiscal a partir del CUIT.",
-        "tipo": "afip",
-        "endpoint": "POST /v1/intel/enrich/afip",
+        "id": "buscar_datos_por_cuit",
+        "nombre": "Buscar datos a través de CUIT",
+        "descripcion": "Consulta AFIP para obtener razón social, estado, actividad principal y domicilio fiscal.",
+        "entrada": "cuit",
     },
     {
-        "id": "enrich-maps",
-        "nombre": "Búsqueda en Google Maps",
-        "descripcion": "Encuentra una empresa por nombre o dirección y devuelve lugar, teléfono, web, rating y categorías.",
-        "tipo": "maps",
-        "endpoint": "POST /v1/intel/enrich/maps",
+        "id": "buscar_obras_por_localizacion",
+        "nombre": "Buscar obras a través de localización",
+        "descripcion": "Detecta obras en construcción dentro de un radio geográfico a partir de coordenadas.",
+        "entrada": "localizacion",
     },
     {
-        "id": "enrich-obras",
-        "nombre": "Radar de obras por zona",
-        "descripcion": "Detecta obras en construcción dentro de un radio geográfico usando coordenadas lat/lng.",
-        "tipo": "obras",
-        "endpoint": "POST /v1/intel/obras/search",
+        "id": "buscar_empresa_por_nombre",
+        "nombre": "Buscar empresa por razón social",
+        "descripcion": "Busca una empresa en Google Maps por nombre y devuelve dirección, teléfono, web y categorías.",
+        "entrada": "razon_social",
     },
     {
-        "id": "enrich-apollo-org",
-        "nombre": "Datos de empresa vía Apollo",
-        "descripcion": "Obtiene información organizacional (empleados, industria, tecnologías, redes sociales) por dominio web.",
-        "tipo": "apollo_org",
-        "endpoint": "POST /v1/intel/enrich/apollo/org",
+        "id": "validar_email",
+        "nombre": "Validar email",
+        "descripcion": "Verifica si una dirección de email es válida y está activa.",
+        "entrada": "email",
     },
     {
-        "id": "enrich-apollo-people",
-        "nombre": "Búsqueda de contactos vía Apollo",
-        "descripcion": "Busca personas por empresa y cargo para identificar tomadores de decisión.",
-        "tipo": "apollo_people",
-        "endpoint": "POST /v1/intel/enrich/apollo/people",
-    },
-    {
-        "id": "enrich-apollo-reveal",
-        "nombre": "Revelar contacto Apollo",
-        "descripcion": "Obtiene email y teléfono verificados de un contacto identificado por su Apollo ID.",
-        "tipo": "apollo_reveal",
-        "endpoint": "POST /v1/intel/enrich/apollo/reveal",
+        "id": "verificar_sitio_web",
+        "nombre": "Verificar sitio web activo",
+        "descripcion": "Comprueba si un sitio web responde y está en línea.",
+        "entrada": "sitio_web",
     },
 ]
 
 
 def _seed_enrichment_processes(conn: Any) -> None:
     now = datetime.now(timezone.utc).isoformat()
+    is_pg = _get_engine().dialect.name == "postgresql"
     for p in _ENRICHMENT_SEED:
         conn.execute(
-            text("""INSERT INTO enrichment_processes (id, nombre, descripcion, tipo, endpoint, activo, created_at)
-                    VALUES (:id, :nombre, :descripcion, :tipo, :endpoint, 1, :created_at)
-                    ON CONFLICT (tipo) DO NOTHING""")
-            if _get_engine().dialect.name == "postgresql"
-            else text("""INSERT OR IGNORE INTO enrichment_processes (id, nombre, descripcion, tipo, endpoint, activo, created_at)
-                    VALUES (:id, :nombre, :descripcion, :tipo, :endpoint, 1, :created_at)"""),
+            text("""INSERT INTO enrichment_processes (id, nombre, descripcion, entrada, activo, created_at)
+                    VALUES (:id, :nombre, :descripcion, :entrada, 1, :created_at)
+                    ON CONFLICT (id) DO NOTHING""")
+            if is_pg
+            else text("""INSERT OR IGNORE INTO enrichment_processes (id, nombre, descripcion, entrada, activo, created_at)
+                    VALUES (:id, :nombre, :descripcion, :entrada, 1, :created_at)"""),
             {**p, "created_at": now},
         )
 
@@ -680,7 +672,7 @@ def list_enrichment_processes(only_active: bool = False) -> list[dict[str, Any]]
         conn.commit()
         where = "WHERE activo = 1" if only_active else ""
         rows = conn.execute(
-            text(f"SELECT id, nombre, descripcion, tipo, endpoint, activo, created_at FROM enrichment_processes {where} ORDER BY created_at ASC")
+            text(f"SELECT id, nombre, descripcion, entrada, activo, created_at FROM enrichment_processes {where} ORDER BY created_at ASC")
         ).mappings().fetchall()
     return [dict(r) for r in rows]
 
