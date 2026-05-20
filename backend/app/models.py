@@ -239,6 +239,7 @@ class RegisteredUrl(BaseModel):
     fecha_fin: str | None = None
     fecha_ultimo_scraping: str | None
     created_at: str
+    frecuencia_baja: int = 0
 
 
 class ScrapeNowResponse(BaseModel):

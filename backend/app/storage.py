@@ -99,7 +99,8 @@ def _ensure_db() -> None:
                 fecha_inicio TEXT,
                 fecha_fin TEXT,
                 fecha_ultimo_scraping TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                frecuencia_baja INTEGER NOT NULL DEFAULT 0
             )
         """))
         conn.execute(text("""
@@ -136,18 +137,11 @@ def _ensure_db() -> None:
             conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS frecuencia TEXT"))
             conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"))
             conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS fecha_fin TEXT"))
-            conn.execute(text(
-                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS nombre TEXT"
-            ))
-            conn.execute(text(
-                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS prompt TEXT"
-            ))
-            conn.execute(text(
-                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"
-            ))
-            conn.execute(text(
-                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_fin TEXT"
-            ))
+            conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS nombre TEXT"))
+            conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS prompt TEXT"))
+            conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"))
+            conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_fin TEXT"))
+            conn.execute(text("ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS frecuencia_baja INTEGER NOT NULL DEFAULT 0"))
         else:
             for stmt in [
                 "ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'",
@@ -160,6 +154,7 @@ def _ensure_db() -> None:
                 "ALTER TABLE registered_urls ADD COLUMN prompt TEXT",
                 "ALTER TABLE registered_urls ADD COLUMN fecha_inicio TEXT",
                 "ALTER TABLE registered_urls ADD COLUMN fecha_fin TEXT",
+                "ALTER TABLE registered_urls ADD COLUMN frecuencia_baja INTEGER NOT NULL DEFAULT 0",
             ]:
                 try:
                     conn.execute(text(stmt))
@@ -374,7 +369,7 @@ def list_registered_urls() -> list[dict[str, Any]]:
         rows = conn.execute(
             text("SELECT id, nombre, url, cargado_por, frecuencia, prompt, fecha_inicio, fecha_fin, "
                  "fecha_ultimo_scraping, created_at "
-                 "FROM registered_urls ORDER BY created_at DESC")
+                 "FROM registered_urls WHERE frecuencia_baja = 0 ORDER BY created_at DESC")
         ).mappings().fetchall()
     return [dict(r) for r in rows]
 
@@ -435,7 +430,7 @@ def delete_registered_url(registered_id: str) -> bool:
     _ensure_db()
     with _connect() as conn:
         result = conn.execute(
-            text("DELETE FROM registered_urls WHERE id = :id"),
+            text("UPDATE registered_urls SET frecuencia_baja = 1 WHERE id = :id AND frecuencia_baja = 0"),
             {"id": registered_id},
         )
         conn.commit()
@@ -451,7 +446,7 @@ def get_urls_due_for_scraping() -> list[dict[str, Any]]:
     with _connect() as conn:
         rows = conn.execute(
             text("SELECT id, url, cargado_por, frecuencia, fecha_ultimo_scraping "
-                 "FROM registered_urls")
+                 "FROM registered_urls WHERE frecuencia_baja = 0")
         ).mappings().fetchall()
     due = []
     for r in rows:

@@ -124,6 +124,7 @@ export interface RegisteredUrl {
   fecha_fin: string | null;
   fecha_ultimo_scraping: string | null;
   created_at: string;
+  frecuencia_baja: number;
 }
 
 export interface RegisterUrlRequest {
