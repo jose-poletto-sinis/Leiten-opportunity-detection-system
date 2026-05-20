@@ -168,6 +168,7 @@ export function getRecords(params: {
   offset?: number;
   user_id?: string;
   q?: string;
+  registered_id?: string;
 }) {
   return getJson<RecordsResponse>("/v1/intel/records", params as Record<string, string | number | undefined>);
 }

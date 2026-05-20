@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import {
   deleteRegisteredUrl,
   getPrompt,
+  getRecords,
   getRegisteredUrls,
   registerUrl,
+  scrapeRegisteredUrl,
   updatePrompt,
   updateRegisteredUrl,
 } from "../../lib/api";
-import type { Frecuencia, RegisteredUrl } from "../../lib/types";
+import type { Frecuencia, RecordSummary, RegisteredUrl } from "../../lib/types";
 import { isValidUrl } from "../../lib/validators";
 
 function formatErr(err: unknown): string {
@@ -166,6 +168,110 @@ const S = {
     color: "#94a3b8", fontSize: 14,
   },
 };
+
+// ─── Modal ejecutar ──────────────────────────────────────────────────────────
+
+function EjecutarModal({ tarea, systemPrompt, onClose }: { tarea: RegisteredUrl; systemPrompt: string; onClose: () => void }) {
+  const [historial, setHistorial] = useState<RecordSummary[]>([]);
+  const [loadingHist, setLoadingHist] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getRecords({ registered_id: tarea.id, limit: 10 })
+      .then((r) => setHistorial(r.items))
+      .catch(() => {})
+      .finally(() => setLoadingHist(false));
+  }, [tarea.id]);
+
+  async function handleEjecutar() {
+    setRunning(true);
+    setRunError(null);
+    try {
+      await scrapeRegisteredUrl(tarea.id);
+      const r = await getRecords({ registered_id: tarea.id, limit: 10 });
+      setHistorial(r.items);
+    } catch (e) {
+      setRunError(e instanceof Error ? e.message : "Error al ejecutar");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  const promptLabel = tarea.prompt ?? systemPrompt ?? "por defecto";
+
+  const modal = (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, width: "100%", maxWidth: 680, maxHeight: "85vh", display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #334155", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ color: "#a78bfa", fontSize: 18 }}>▶</span>
+            <span style={{ fontWeight: 700, fontSize: 16, color: "#f1f5f9" }}>Ejecutar</span>
+            <span style={{ color: "#64748b" }}>·</span>
+            <span style={{ color: "#94a3b8", fontSize: 15 }}>{tarea.nombre ?? tarea.url}</span>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#64748b", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Cuerpo scrollable */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {/* Info */}
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "#94a3b8" }}>
+            Se va a <strong style={{ color: "#f1f5f9" }}>scrapear la URL</strong> de la tarea, pasar el contenido + el prompt a la <strong style={{ color: "#f1f5f9" }}>IA</strong>, y guardar el resultado en la base de datos.
+          </p>
+          <div style={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "12px 16px", marginBottom: 20, fontSize: 13 }}>
+            <div><span style={{ color: "#64748b" }}>URL: </span><a href={tarea.url} target="_blank" rel="noreferrer" style={{ color: "#3b82f6" }}>{tarea.url}</a></div>
+            <div style={{ marginTop: 6 }}><span style={{ color: "#64748b" }}>Prompt: </span><span style={{ color: "#94a3b8" }}>{promptLabel.slice(0, 80)}{promptLabel.length > 80 ? "…" : ""}</span></div>
+          </div>
+
+          {runError && (
+            <div style={{ background: "#450a0a", border: "1px solid #dc2626", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#fca5a5" }}>{runError}</div>
+          )}
+
+          {/* Historial */}
+          <div style={{ borderTop: "1px solid #334155", paddingTop: 16 }}>
+            <p style={{ margin: "0 0 12px", fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>Historial</p>
+            {loadingHist ? (
+              <p style={{ color: "#64748b", fontSize: 13 }}>Cargando...</p>
+            ) : historial.length === 0 ? (
+              <p style={{ color: "#64748b", fontSize: 13 }}>Sin ejecuciones anteriores.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {historial.map((rec) => (
+                  <div key={rec.saved_id} style={{ background: "#0f172a", border: "1px solid #1e3a5f", borderLeft: "3px solid #22c55e", borderRadius: 8, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 12 }}>
+                      <span style={{ background: "#14532d", color: "#86efac", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>OK</span>
+                      <span style={{ color: "#64748b" }}>
+                        {new Date(rec.created_at).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        {" · "}{rec.row_count} fila{rec.row_count !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    {rec.rows_preview && (
+                      <pre style={{ margin: 0, fontSize: 11, color: "#94a3b8", fontFamily: "monospace", whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 120, overflowY: "auto" }}>
+                        {rec.rows_preview}
+                      </pre>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "16px 24px", borderTop: "1px solid #334155", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+          <button onClick={onClose} style={{ padding: "8px 20px", borderRadius: 8, border: "1px solid #334155", background: "none", color: "#94a3b8", cursor: "pointer", fontSize: 13 }}>Cerrar</button>
+          <button onClick={handleEjecutar} disabled={running} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: running ? "#4c1d95" : "#7c3aed", color: "#fff", cursor: running ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            {running ? "Ejecutando..." : "▶ Ejecutar ahora"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
+}
 
 // ─── Modal de configuración ───────────────────────────────────────────────────
 
@@ -345,6 +451,7 @@ export default function TareasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<RegisteredUrl | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [ejecutando, setEjecutando] = useState<RegisteredUrl | null>(null);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("leiten_intel_token") : null;
@@ -470,6 +577,7 @@ export default function TareasPage() {
                       </td>
                       <td style={S.td}>
                         <div style={{ display: "flex", gap: 6 }}>
+                          <button style={{ ...S.btnEdit, background: "#5b21b6", borderColor: "#5b21b6", color: "#fff" }} onClick={() => setEjecutando(t)}>▶ Ejecutar</button>
                           <button style={S.btnEdit} onClick={() => { setEditing(t); setModalOpen(true); }}>Editar</button>
                           <button style={S.btnDelete} onClick={() => handleDelete(t.id)}>Borrar</button>
                         </div>
@@ -496,6 +604,13 @@ export default function TareasPage() {
           current={systemPrompt}
           onClose={() => setConfigOpen(false)}
           onSaved={(p) => setSystemPrompt(p)}
+        />
+      )}
+      {ejecutando && (
+        <EjecutarModal
+          tarea={ejecutando}
+          systemPrompt={systemPrompt}
+          onClose={() => setEjecutando(null)}
         />
       )}
     </div>

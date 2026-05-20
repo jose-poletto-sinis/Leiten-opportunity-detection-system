@@ -250,6 +250,7 @@ def list_records(
     offset: int = 0,
     user_id: str | None = None,
     q: str | None = None,
+    registered_id: str | None = None,
 ) -> dict[str, Any]:
     """Devuelve registros paginados ordenados por created_at DESC."""
     _ensure_db()
@@ -262,6 +263,9 @@ def list_records(
     if q:
         conditions.append("(url LIKE :q OR prompt LIKE :q)")
         params["q"] = f"%{q}%"
+    if registered_id:
+        conditions.append("registered_id = :registered_id")
+        params["registered_id"] = registered_id
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -272,7 +276,7 @@ def list_records(
         total = total_row["cnt"] if total_row else 0
 
         rows = conn.execute(
-            text(f"""SELECT saved_id, request_id, url, prompt, rows_json, user_id, status, created_at
+            text(f"""SELECT saved_id, request_id, url, prompt, rows_json, columns_json, user_id, status, created_at
                      FROM scrape_records {where}
                      ORDER BY created_at DESC
                      LIMIT :limit OFFSET :offset"""),
@@ -282,9 +286,12 @@ def list_records(
     items = []
     for r in rows:
         try:
-            row_count = len(json.loads(r["rows_json"]))
+            parsed_rows = json.loads(r["rows_json"])
+            row_count = len(parsed_rows)
+            rows_preview = json.dumps(parsed_rows[:2], ensure_ascii=False, indent=2)
         except Exception:
             row_count = 0
+            rows_preview = ""
         items.append(
             {
                 "saved_id": r["saved_id"],
@@ -292,6 +299,7 @@ def list_records(
                 "url": r["url"],
                 "prompt": r["prompt"],
                 "row_count": row_count,
+                "rows_preview": rows_preview,
                 "user_id": r["user_id"],
                 "status": r["status"],
                 "created_at": r["created_at"],

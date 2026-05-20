@@ -87,6 +87,7 @@ export interface RecordSummary {
   url: string;
   prompt: string;
   row_count: number;
+  rows_preview: string;
   user_id: string | null;
   status: string;
   created_at: string;

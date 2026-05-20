@@ -171,6 +171,7 @@ class RecordSummary(BaseModel):
     url: str
     prompt: str
     row_count: int
+    rows_preview: str = ""
     user_id: str | None
     status: str = "pendiente"
     created_at: str

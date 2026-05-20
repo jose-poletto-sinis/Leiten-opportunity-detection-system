@@ -546,8 +546,9 @@ async def get_records(
     offset: int = Query(default=0, ge=0),
     user_id: str | None = Query(default=None),
     q: str | None = Query(default=None),
+    registered_id: str | None = Query(default=None),
 ) -> RecordsResponse:
-    data = list_records(limit=limit, offset=offset, user_id=user_id, q=q)
+    data = list_records(limit=limit, offset=offset, user_id=user_id, q=q, registered_id=registered_id)
     return RecordsResponse(**data)
 
 
