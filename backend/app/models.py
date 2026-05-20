@@ -207,19 +207,36 @@ class ErrorResponse(BaseModel):
 
 class RegisterUrlRequest(BaseModel):
     url: HttpUrl
+    nombre: str | None = None
     cargado_por: str | None = None
     frecuencia: Literal["diaria", "semanal", "mensual"] = "semanal"
+    prompt: str | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
 
 
 class UpdateFrecuenciaRequest(BaseModel):
     frecuencia: Literal["diaria", "semanal", "mensual"]
 
 
+class UpdateRegisteredUrlRequest(BaseModel):
+    nombre: str | None = None
+    url: HttpUrl | None = None
+    frecuencia: Literal["diaria", "semanal", "mensual"] | None = None
+    prompt: str | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
+
+
 class RegisteredUrl(BaseModel):
     id: str
+    nombre: str | None = None
     url: str
     cargado_por: str | None
     frecuencia: str
+    prompt: str | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
     fecha_ultimo_scraping: str | None
     created_at: str
 

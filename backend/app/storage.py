@@ -86,9 +86,13 @@ def _ensure_db() -> None:
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS registered_urls (
                 id TEXT PRIMARY KEY,
+                nombre TEXT,
                 url TEXT NOT NULL,
                 cargado_por TEXT,
                 frecuencia TEXT NOT NULL DEFAULT 'semanal',
+                prompt TEXT,
+                fecha_inicio TEXT,
+                fecha_fin TEXT,
                 fecha_ultimo_scraping TEXT,
                 created_at TEXT NOT NULL
             )
@@ -122,13 +126,30 @@ def _ensure_db() -> None:
             conn.execute(text(
                 "ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pendiente'"
             ))
+            conn.execute(text(
+                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS nombre TEXT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS prompt TEXT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"
+            ))
+            conn.execute(text(
+                "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS fecha_fin TEXT"
+            ))
         else:
-            try:
-                conn.execute(text(
-                    "ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'"
-                ))
-            except Exception:
-                pass
+            for stmt in [
+                "ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'",
+                "ALTER TABLE registered_urls ADD COLUMN nombre TEXT",
+                "ALTER TABLE registered_urls ADD COLUMN prompt TEXT",
+                "ALTER TABLE registered_urls ADD COLUMN fecha_inicio TEXT",
+                "ALTER TABLE registered_urls ADD COLUMN fecha_fin TEXT",
+            ]:
+                try:
+                    conn.execute(text(stmt))
+                except Exception:
+                    pass
         conn.commit()
 
 
@@ -290,20 +311,29 @@ def get_record(saved_id: str) -> dict[str, Any] | None:
 def register_url(
     *,
     url: str,
+    nombre: str | None = None,
     cargado_por: str | None,
     frecuencia: str = "semanal",
+    prompt: str | None = None,
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
 ) -> str:
     _ensure_db()
     new_id = str(uuid4())
     with _connect() as conn:
         conn.execute(
-            text("""INSERT INTO registered_urls (id, url, cargado_por, frecuencia, created_at)
-                    VALUES (:id, :url, :cargado_por, :frecuencia, :created_at)"""),
+            text("""INSERT INTO registered_urls
+                    (id, nombre, url, cargado_por, frecuencia, prompt, fecha_inicio, fecha_fin, created_at)
+                    VALUES (:id, :nombre, :url, :cargado_por, :frecuencia, :prompt, :fecha_inicio, :fecha_fin, :created_at)"""),
             {
                 "id": new_id,
+                "nombre": nombre,
                 "url": url,
                 "cargado_por": cargado_por,
                 "frecuencia": frecuencia,
+                "prompt": prompt,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
                 "created_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -315,18 +345,50 @@ def list_registered_urls() -> list[dict[str, Any]]:
     _ensure_db()
     with _connect() as conn:
         rows = conn.execute(
-            text("SELECT id, url, cargado_por, frecuencia, fecha_ultimo_scraping, created_at "
+            text("SELECT id, nombre, url, cargado_por, frecuencia, prompt, fecha_inicio, fecha_fin, "
+                 "fecha_ultimo_scraping, created_at "
                  "FROM registered_urls ORDER BY created_at DESC")
         ).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
-def update_registered_url(registered_id: str, *, frecuencia: str) -> bool:
+def update_registered_url(
+    registered_id: str,
+    *,
+    nombre: str | None = None,
+    url: str | None = None,
+    frecuencia: str | None = None,
+    prompt: str | None = None,
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
+) -> bool:
     _ensure_db()
+    fields: list[str] = []
+    params: dict[str, Any] = {"id": registered_id}
+    if nombre is not None:
+        fields.append("nombre = :nombre")
+        params["nombre"] = nombre
+    if url is not None:
+        fields.append("url = :url")
+        params["url"] = url
+    if frecuencia is not None:
+        fields.append("frecuencia = :frecuencia")
+        params["frecuencia"] = frecuencia
+    if prompt is not None:
+        fields.append("prompt = :prompt")
+        params["prompt"] = prompt
+    if fecha_inicio is not None:
+        fields.append("fecha_inicio = :fecha_inicio")
+        params["fecha_inicio"] = fecha_inicio
+    if fecha_fin is not None:
+        fields.append("fecha_fin = :fecha_fin")
+        params["fecha_fin"] = fecha_fin
+    if not fields:
+        return True
     with _connect() as conn:
         result = conn.execute(
-            text("UPDATE registered_urls SET frecuencia = :frecuencia WHERE id = :id"),
-            {"frecuencia": frecuencia, "id": registered_id},
+            text(f"UPDATE registered_urls SET {', '.join(fields)} WHERE id = :id"),
+            params,
         )
         conn.commit()
     return result.rowcount > 0

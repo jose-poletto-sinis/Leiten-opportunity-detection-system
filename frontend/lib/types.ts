@@ -115,17 +115,25 @@ export type Frecuencia = "diaria" | "semanal" | "mensual";
 
 export interface RegisteredUrl {
   id: string;
+  nombre: string | null;
   url: string;
   cargado_por: string | null;
   frecuencia: Frecuencia;
+  prompt: string | null;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
   fecha_ultimo_scraping: string | null;
   created_at: string;
 }
 
 export interface RegisterUrlRequest {
   url: string;
+  nombre?: string;
   cargado_por?: string;
   frecuencia: Frecuencia;
+  prompt?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
 }
 
 export interface ScrapeNowResponse {

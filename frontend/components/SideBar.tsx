@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 import { logout } from "../lib/api";
 
 const TOOLS = [
-  { href: "/resultados" as const, label: "URLs", desc: "Datos y perfiles" },
+  { href: "/tareas" as const, label: "Tareas", desc: "Scraping de clientes" },
+  { href: "/intel" as const, label: "URL", desc: "URLs monitoreadas" },
   { href: "/obras" as const, label: "Radar", desc: "Búsqueda por zona" },
   { href: "/prospectos" as const, label: "Prospectos", desc: "Contactos y leads" },
-  { href: "/intel" as const, label: "Historial", desc: "URLs monitoreadas" },
 ];
 
 export function SideBar() {
@@ -58,7 +58,7 @@ export function SideBar() {
           className={`sidebar__item${pathname?.startsWith("/sistemas") ? " sidebar__item--active" : ""}`}
         >
           <span className="sidebar__item-label">Config</span>
-          <span className="sidebar__item-desc">Prompt del sistema</span>
+          <span className="sidebar__item-desc">Prompt del scraping</span>
         </Link>
 
         {nomUsr && (

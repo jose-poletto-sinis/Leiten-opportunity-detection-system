@@ -9,9 +9,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const isLogin = pathname === "/login";
+  const isStandalone = pathname?.startsWith("/tareas");
 
   useEffect(() => {
-    if (isLogin) {
+    if (isLogin || isStandalone) {
       setReady(true);
       return;
     }
@@ -25,7 +26,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!ready) return null;
 
-  if (isLogin) {
+  if (isLogin || isStandalone) {
     return <>{children}</>;
   }
 

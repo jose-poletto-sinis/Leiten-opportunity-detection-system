@@ -82,6 +82,7 @@ from .models import (
     ScrapeRequest,
     ScrapeResponse,
     UpdateFrecuenciaRequest,
+    UpdateRegisteredUrlRequest,
 )
 from .runner import fetch_page
 from .storage import (
@@ -121,10 +122,11 @@ async def _scheduled_scraper() -> None:
             if not due:
                 continue
             logger.info("Scheduler: %d URL/s pendientes de scraping.", len(due))
-            prompt = get_active_prompt()
+            global_prompt = get_active_prompt()
             loop = asyncio.get_running_loop()
             for entry in due:
                 try:
+                    prompt = entry.get("prompt") or global_prompt
                     page = await asyncio.wait_for(
                         loop.run_in_executor(None, fetch_page, entry["url"], settings.scraping_timeout_seconds),
                         timeout=settings.scraping_timeout_seconds + 5,
@@ -173,7 +175,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -582,8 +584,12 @@ async def remove_record(
 async def create_registered_url(req: RegisterUrlRequest) -> RegisteredUrl:
     new_id = register_url(
         url=str(req.url),
+        nombre=req.nombre,
         cargado_por=req.cargado_por,
         frecuencia=req.frecuencia,
+        prompt=req.prompt,
+        fecha_inicio=req.fecha_inicio,
+        fecha_fin=req.fecha_fin,
     )
     urls = list_registered_urls()
     entry = next(u for u in urls if u["id"] == new_id)
@@ -600,8 +606,16 @@ async def get_registered_urls() -> list[RegisteredUrl]:
     response_model=RegisteredUrl,
     responses={404: {"model": ErrorResponse}},
 )
-async def patch_registered_url(registered_id: str, req: UpdateFrecuenciaRequest) -> RegisteredUrl:
-    updated = update_registered_url(registered_id, frecuencia=req.frecuencia)
+async def patch_registered_url(registered_id: str, req: UpdateRegisteredUrlRequest) -> RegisteredUrl:
+    updated = update_registered_url(
+        registered_id,
+        nombre=req.nombre,
+        url=str(req.url) if req.url else None,
+        frecuencia=req.frecuencia,
+        prompt=req.prompt,
+        fecha_inicio=req.fecha_inicio,
+        fecha_fin=req.fecha_fin,
+    )
     if not updated:
         raise HTTPException(status_code=404, detail={"error_code": "NOT_FOUND", "message": "URL no encontrada."})
     urls = list_registered_urls()
@@ -629,7 +643,7 @@ async def scrape_registered_url(registered_id: str) -> ScrapeNowResponse:
         raise HTTPException(status_code=404, detail={"error_code": "NOT_FOUND", "message": "URL no encontrada."})
 
     started = time.perf_counter()
-    prompt = get_active_prompt()
+    prompt = entry.get("prompt") or get_active_prompt()
     loop = asyncio.get_running_loop()
 
     try:

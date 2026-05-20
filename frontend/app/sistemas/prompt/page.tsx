@@ -46,7 +46,7 @@ export default function SistemasPromptPage() {
       <header className="page__header">
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h1 className="page__title">Prompt del sistema</h1>
+            <h1 className="page__title">Prompt del scraping</h1>
             <p className="page__subtitle">
               Esta instrucción es la que el agente de IA usa en cada análisis. Solo visible para Sistemas.
             </p>

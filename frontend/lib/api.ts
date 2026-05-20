@@ -197,6 +197,10 @@ export function updateFrecuencia(id: string, frecuencia: Frecuencia) {
   return patchJson<RegisteredUrl>(`/v1/intel/urls/${id}`, { frecuencia });
 }
 
+export function updateRegisteredUrl(id: string, fields: { nombre?: string | null; url?: string; frecuencia?: Frecuencia; prompt?: string | null; fecha_inicio?: string | null; fecha_fin?: string | null }) {
+  return patchJson<RegisteredUrl>(`/v1/intel/urls/${id}`, fields);
+}
+
 export function deleteRegisteredUrl(id: string) {
   return deleteJson<{ status: string; id: string }>(`/v1/intel/urls/${id}`);
 }

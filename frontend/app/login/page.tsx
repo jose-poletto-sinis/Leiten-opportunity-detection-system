@@ -22,7 +22,7 @@ export default function LoginPage() {
         "leiten_intel_user",
         JSON.stringify({ cod_usr: result.cod_usr, nom_usr: result.nom_usr }),
       );
-      router.replace("/resultados");
+      router.replace("/tareas");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Error al iniciar sesión.");
     } finally {
