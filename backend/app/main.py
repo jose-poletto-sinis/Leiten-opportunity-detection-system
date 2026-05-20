@@ -145,6 +145,11 @@ async def _scheduled_scraper() -> None:
                         columns=extracted.get("columns", []),
                         rows=extracted.get("rows", []),
                         user_id=entry.get("cargado_por"),
+                        registered_id=entry["id"],
+                        nombre=entry.get("nombre"),
+                        frecuencia=entry.get("frecuencia"),
+                        fecha_inicio=entry.get("fecha_inicio"),
+                        fecha_fin=entry.get("fecha_fin"),
                     )
                     mark_url_scraped(entry["id"])
                     logger.info("Scheduler: scraped %s OK.", entry["url"])
@@ -672,6 +677,11 @@ async def scrape_registered_url(registered_id: str) -> ScrapeNowResponse:
         columns=columns,
         rows=rows,
         user_id=entry.get("cargado_por"),
+        registered_id=registered_id,
+        nombre=entry.get("nombre"),
+        frecuencia=entry.get("frecuencia"),
+        fecha_inicio=entry.get("fecha_inicio"),
+        fecha_fin=entry.get("fecha_fin"),
     )
     mark_url_scraped(registered_id)
 

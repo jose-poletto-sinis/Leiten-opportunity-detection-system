@@ -57,7 +57,12 @@ def _ensure_db() -> None:
                 rows_json TEXT NOT NULL,
                 user_id TEXT,
                 status TEXT NOT NULL DEFAULT 'pendiente',
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                registered_id TEXT,
+                nombre TEXT,
+                frecuencia TEXT,
+                fecha_inicio TEXT,
+                fecha_fin TEXT
             )
         """))
         conn.execute(text("""
@@ -126,6 +131,11 @@ def _ensure_db() -> None:
             conn.execute(text(
                 "ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'pendiente'"
             ))
+            conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS registered_id TEXT"))
+            conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS nombre TEXT"))
+            conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS frecuencia TEXT"))
+            conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS fecha_inicio TEXT"))
+            conn.execute(text("ALTER TABLE scrape_records ADD COLUMN IF NOT EXISTS fecha_fin TEXT"))
             conn.execute(text(
                 "ALTER TABLE registered_urls ADD COLUMN IF NOT EXISTS nombre TEXT"
             ))
@@ -141,6 +151,11 @@ def _ensure_db() -> None:
         else:
             for stmt in [
                 "ALTER TABLE scrape_records ADD COLUMN status TEXT NOT NULL DEFAULT 'pendiente'",
+                "ALTER TABLE scrape_records ADD COLUMN registered_id TEXT",
+                "ALTER TABLE scrape_records ADD COLUMN nombre TEXT",
+                "ALTER TABLE scrape_records ADD COLUMN frecuencia TEXT",
+                "ALTER TABLE scrape_records ADD COLUMN fecha_inicio TEXT",
+                "ALTER TABLE scrape_records ADD COLUMN fecha_fin TEXT",
                 "ALTER TABLE registered_urls ADD COLUMN nombre TEXT",
                 "ALTER TABLE registered_urls ADD COLUMN prompt TEXT",
                 "ALTER TABLE registered_urls ADD COLUMN fecha_inicio TEXT",
@@ -189,15 +204,22 @@ def save_record(
     columns: list[str],
     rows: list[dict[str, Any]],
     user_id: str | None,
+    registered_id: str | None = None,
+    nombre: str | None = None,
+    frecuencia: str | None = None,
+    fecha_inicio: str | None = None,
+    fecha_fin: str | None = None,
 ) -> UUID:
     _ensure_db()
     saved_id = uuid4()
     with _connect() as conn:
         conn.execute(
             text("""INSERT INTO scrape_records
-                    (saved_id, request_id, url, prompt, columns_json, rows_json, user_id, status, created_at)
+                    (saved_id, request_id, url, prompt, columns_json, rows_json, user_id, status, created_at,
+                     registered_id, nombre, frecuencia, fecha_inicio, fecha_fin)
                     VALUES (:saved_id, :request_id, :url, :prompt, :columns_json, :rows_json,
-                            :user_id, :status, :created_at)"""),
+                            :user_id, :status, :created_at,
+                            :registered_id, :nombre, :frecuencia, :fecha_inicio, :fecha_fin)"""),
             {
                 "saved_id": str(saved_id),
                 "request_id": str(request_id),
@@ -208,6 +230,11 @@ def save_record(
                 "user_id": user_id,
                 "status": "pendiente",
                 "created_at": datetime.now(timezone.utc).isoformat(),
+                "registered_id": registered_id,
+                "nombre": nombre,
+                "frecuencia": frecuencia,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
             },
         )
         conn.commit()
