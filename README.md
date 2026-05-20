@@ -47,3 +47,23 @@ npm run dev                     # http://localhost:3000/intel
 
 Ver `docs/azure-endpoint-contract.md` para el contrato del endpoint y los TODOs pendientes
 con el área de integraciones.
+
+## URLs de producción
+
+| Servicio | URL |
+|---|---|
+| Frontend | https://red-dune-08f3c890f.7.azurestaticapps.net |
+| Backend principal | https://leiten-intel-scraper.azurewebsites.net |
+| Backend de respaldo | https://leiten-opportunity-api.azurewebsites.net |
+
+### Activar el respaldo si el backend principal cae
+
+1. Verificar que el principal no responde: `GET /healthz` devuelve error.
+2. Rebuildar el frontend con la URL del respaldo:
+   ```bash
+   cd frontend
+   NEXT_PUBLIC_INTEL_API_URL=https://leiten-opportunity-api.azurewebsites.net npm run build
+   ```
+3. Redeployar al Static Web App `leiten-intel-frontend`.
+
+Ambos backends corren el mismo contenedor Docker (`leitenregistry.azurecr.io/leiten-opportunity-api:latest`) con las mismas variables de entorno.
