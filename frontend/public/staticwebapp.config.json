@@ -1,4 +1,11 @@
 {
+  "routes": [
+    {
+      "route": "/",
+      "redirect": "/tareas",
+      "statusCode": 302
+    }
+  ],
   "navigationFallback": {
     "rewrite": "/index.html",
     "exclude": ["/api/*", "/_next/*", "/static/*", "*.{css,js,png,jpg,svg,ico,json,woff,woff2}"]
