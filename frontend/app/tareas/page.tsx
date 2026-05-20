@@ -382,26 +382,19 @@ export default function TareasPage() {
 
   return (
     <div style={S.page}>
-      {/* Navbar */}
-      <header style={S.header}>
-        <div style={S.logo}>
-          <span>Leiten</span>
-          <span style={S.logoAccent}>·</span>
-          <span style={{ fontWeight: 400, color: "#94a3b8" }}>Scraping de Clientes Potenciales</span>
-        </div>
-        <div style={S.headerActions}>
-          <button style={S.btnSecondary} onClick={() => setConfigOpen(true)}>
-            ⚙ Configuración
-          </button>
-          <button style={S.btnPrimary} onClick={() => { setEditing(null); setModalOpen(true); }}>
-            + Nueva tarea
-          </button>
-        </div>
-      </header>
-
       {/* Cuerpo */}
       <div style={S.body}>
-        <h1 style={S.heroTitle}>Scraping de Clientes Potenciales</h1>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4 }}>
+          <h1 style={{ ...S.heroTitle, marginBottom: 0 }}>Scraping de Clientes Potenciales</h1>
+          <div style={S.headerActions}>
+            <button style={S.btnSecondary} onClick={() => setConfigOpen(true)}>
+              ⚙ Configuración
+            </button>
+            <button style={S.btnPrimary} onClick={() => { setEditing(null); setModalOpen(true); }}>
+              + Nueva tarea
+            </button>
+          </div>
+        </div>
         <p style={S.heroSub}>Gestión de tareas de scraping automatizado con IA</p>
 
         {errorMsg && (
